@@ -3,19 +3,21 @@ import torchaudio
 from pathlib import Path
 from typing import List, Tuple, Union
 from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 import torchaudio.transforms as T
 import librosa
 import numpy as np
 
 class Loader(Dataset):
     def __init__(self, 
-        folds_location: Union[str, Path]
+        folds_location: List
         ) -> None:
         sample_rate = 22050
         n_fft = 1024
         win_length = 512
         hop_length = 512
         n_mels = 128 
+        self._walker = []
         self.length = []
 
         self.mel_spectrogram = T.MelSpectrogram(
@@ -30,16 +32,21 @@ class Loader(Dataset):
         )
         self._parse_file(folds_location)
 
-    def _parse_file(self, folds_location: str) -> None:
-        archive = Path(folds_location)
-
-        self._walker = sorted(str(p) for p in Path(archive).glob("*.wav"))
+    def __len__(self):
+        return len(self._walker)
     
-    def __getitem__(self, index) -> torch.Tensor:
+    def _parse_file(self, folds_location: str) -> None:
+        for fold_location in folds_location:
+            archive = Path(fold_location)
+            self._walker.extend(sorted(str(p) for p in Path(archive).glob("*.wav")))
+    
+    def __getitem__(self, index) -> [torch.Tensor,int]:
         # return self._walker[index]
         fileid = self._walker[index]
+        label = torch.tensor(int(fileid.split('-')[1]))
         waveform, sample_rate = torchaudio.load(fileid)
         waveform = waveform.mean(0, keepdim=True)
+
         # self.length.append(waveform.shape[1])
         
         # padd = torch.zeros(1,512)
@@ -63,14 +70,15 @@ class Loader(Dataset):
             indices = torch.arange(0, spec.shape[-1])
             padd.index_copy_(2,indices,spec)
 
-        return padd
+        return padd, label
 
 if __name__ == "__main__":
-    y = Loader("fold1_20")
+    y = Loader(["fold1_20","fold2_20/"])
+    dataload = DataLoader(y,batch_size=10)
 
-    for i in y:
+    for i,j in dataload:
         print(i.shape)
-        pass
+        break
     # length_arr = np.array(y.length)
     # print(y.length)
     # print(np.min(length_arr))
